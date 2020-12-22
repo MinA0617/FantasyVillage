@@ -1,0 +1,62 @@
+#include "PlayerFiniteState_DefualtReact.h"
+#include "ModelCenter/Character/PlayerCharacter/PlayerCharacter.h"
+#include "ModelCenter/Character/AnimationManager.h"
+#include "ModelCenter/Character/PlayerCharacter/Animation/PlayerAnimInstance.h"
+#include "Components/CapsuleComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Base/M3GameInstance.h"
+
+void UPlayerFiniteState_DefualtReact::Init(APlayerCharacter* target)
+{
+	ReactCount = 1;
+	bIsDown = false;
+	Target = target;
+	Target->AddMovementInput(FVector(1.0f, 0.0f, 0.0f), 0.0f);
+	Cast<UPlayerAnimInstance>(Target->GetAnimation())->bIsFullbody = true;
+	UAnimMontage* ANI = UM3GameInstance::GetAnimationManager()->GetReactMontage(EWeaponType::NONE);
+	Target->GetAnimation()->Montage_Play(ANI);
+	Target->GetAnimation()->OnMontageEnded.AddDynamic(this, &UPlayerFiniteState_DefualtReact::ReactEnd);
+}
+
+void UPlayerFiniteState_DefualtReact::Release()
+{
+	Target->GetAnimation()->OnMontageEnded.RemoveAll(this);
+	ReactCount = 0;
+	bIsDown = false;
+	Cast<UPlayerAnimInstance>(Target->GetAnimation())->bIsFullbody = false;
+	Target->GetCapsuleComponent()->SetSimulatePhysics(false);
+}
+
+void UPlayerFiniteState_DefualtReact::React(ACharacter* Attacker)
+{
+	if (bIsDown == true) return;
+	ReactCount++;
+	if (ReactCount > 2)
+	{
+		UAnimMontage* ANI = UM3GameInstance::GetAnimationManager()->GetDownMontage(EWeaponType::NONE);
+		Target->GetAnimation()->Montage_Stop(0.0f);
+		Target->GetAnimation()->MontageInstances.Empty();
+		Target->GetAnimation()->Montage_Play(ANI);
+
+		FVector Force = Attacker->GetActorLocation() - Target->GetActorLocation();
+		Force.Normalize();
+		Force.Z += 0.3f;
+		Force *= 2000.0f;
+		Target->GetCapsuleComponent()->SetSimulatePhysics(true);
+		Target->GetCapsuleComponent()->AddImpulse(Force, NAME_None, true);
+		bIsDown = true;
+	}
+	else
+	{
+		UAnimMontage* ANI = UM3GameInstance::GetAnimationManager()->GetReactMontage(EWeaponType::NONE);
+		Target->GetAnimation()->Montage_Stop(0.0f);
+		Target->GetAnimation()->MontageInstances.Empty();
+		Target->GetAnimation()->Montage_Play(ANI);
+	}
+}
+
+void UPlayerFiniteState_DefualtReact::ReactEnd(UAnimMontage* Montage, bool bInterrupted)
+{
+	if (Target->PlayerFiniteStateMachine->CurrentPlayerState != this) return;
+	Target->PlayerFiniteStateMachine->StateEvent(EPlayerEvent::RETURN_DEFUALT);
+}
